@@ -1,20 +1,20 @@
-<!---
-
-This file is used to generate your project datasheet. Please fill in the information below and delete any unused
-sections.
-
-You can also include images in this folder and reference them in the markdown. Each image must be less than
-512 kb in size, and the combined size of all images must be less than 1 MB.
--->
-
 ## How it works
 
-Explain how your project works
+SPI peripheral that controls 16 outputs. You send 16-bit writes over SPI (SCLK on ui[0], COPI on ui[1], nCS on ui[2]). First bit is read/write, next 7 are the address, last 8 are the data.
+
+Registers:
+- 0x00: output enable for uo_out[7:0]
+- 0x01: output enable for uio_out[7:0]
+- 0x02: PWM enable for uo_out[7:0]
+- 0x03: PWM enable for uio_out[7:0]
+- 0x04: PWM duty cycle
+
+Each output can be off, on, or PWM at about 3 kHz.
 
 ## How to test
 
-Explain how to use your project
+Run the cocotb tests in the test folder. They send SPI writes and check the outputs.
 
 ## External hardware
 
-List external hardware used in your project (e.g. PMOD, LED display, etc), if any
+None

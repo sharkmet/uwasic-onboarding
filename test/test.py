@@ -149,13 +149,92 @@ async def test_spi(dut):
 
     dut._log.info("SPI test completed successfully")
 
+async def rise(dut, max_cycles=10000):
+    prev = int(dut.uo_out.value) & 1
+    for _ in range(max_cycles):
+        await ClockCycles(dut.clk, 1)
+        curr = int(dut.uo_out.value) & 1
+        if prev == 0 and curr == 1:
+            return cocotb.utils.get_sim_time(units="ns")
+        prev = curr
+    return None
+
+
+async def fall(dut, max_cycles=10000):
+    prev = int(dut.uo_out.value) & 1
+    for _ in range(max_cycles):
+        await ClockCycles(dut.clk, 1)
+        curr = int(dut.uo_out.value) & 1
+        if prev == 1 and curr == 0:
+            return cocotb.utils.get_sim_time(units="ns")
+        prev = curr
+    return None
+
+
 @cocotb.test()
 async def test_pwm_freq(dut):
-    # Write your test here
+    clock = Clock(dut.clk, 100, units="ns")
+    cocotb.start_soon(clock.start())
+
+    dut.ena.value = 1
+    dut.ui_in.value = ui_in_logicarray(1, 0, 0)
+    dut.rst_n.value = 0
+    await ClockCycles(dut.clk, 5)
+    dut.rst_n.value = 1
+    await ClockCycles(dut.clk, 5)
+
+    await send_spi_transaction(dut, 1, 0x00, 0x01) 
+    await send_spi_transaction(dut, 1, 0x02, 0x01)
+    await send_spi_transaction(dut, 1, 0x04, 0x80)
+
+    t1 = await rise(dut)
+    t2 = await rise(dut)
+    assert t1 is not None and t2 is not None, "PWM never turned on"
+
+    period = t2 - t1
+    freq = 1e9 / period
+    dut._log.info(f"Frequency: {freq} Hz")
+
+    assert 2970 <= freq <= 3030, f"Frequency {freq} Hz is not 3 kHz"
     dut._log.info("PWM Frequency test completed successfully")
 
 
 @cocotb.test()
 async def test_pwm_duty(dut):
-    # Write your test here
+    clock = Clock(dut.clk, 100, units="ns")
+    cocotb.start_soon(clock.start())
+
+    dut.ena.value = 1
+    dut.ui_in.value = ui_in_logicarray(1, 0, 0)
+    dut.rst_n.value = 0
+    await ClockCycles(dut.clk, 5)
+    dut.rst_n.value = 1
+    await ClockCycles(dut.clk, 5)
+
+    await send_spi_transaction(dut, 1, 0x00, 0x01)
+    await send_spi_transaction(dut, 1, 0x02, 0x01)
+
+    # 0%, output should stay off
+    await send_spi_transaction(dut, 1, 0x04, 0x00)
+    for _ in range(10000):
+        await ClockCycles(dut.clk, 1)
+        assert (int(dut.uo_out.value) & 1) == 0, "0% duty: output turned on"
+
+    # 50%
+    await send_spi_transaction(dut, 1, 0x04, 0x80)
+    t_rise1 = await rise(dut)
+    t_fall  = await fall(dut)
+    t_rise2 = await rise(dut)
+    assert None not in (t_rise1, t_fall, t_rise2), "50% duty: output did not toggle"
+
+    duty = (t_fall - t_rise1) / (t_rise2 - t_rise1) * 100
+    dut._log.info(f"50% duty measured: {duty}%")
+    assert 49 <= duty <= 51, f"Expected 50%, got {duty}%"
+
+    # 100%, output should stay on
+    await send_spi_transaction(dut, 1, 0x04, 0xFF)
+    for _ in range(10000):
+        await ClockCycles(dut.clk, 1)
+        assert (int(dut.uo_out.value) & 1) == 1, "100% duty: output turned off"
+
     dut._log.info("PWM Duty Cycle test completed successfully")
